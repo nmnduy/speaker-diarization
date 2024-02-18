@@ -4,12 +4,13 @@ wget wget -O - https://pyannote-speaker-diarization.s3.eu-west-2.amazonaws.com/d
 """
 import json
 import tempfile
+import base64
 
+from typing import Dict
 from cog import BasePredictor, Input, Path
 from pyannote.audio.pipelines import SpeakerDiarization
 
 from lib.diarization import DiarizationPostProcessor
-from lib.audio import AudioPreProcessor
 
 
 class Predictor(BasePredictor):
@@ -35,42 +36,24 @@ class Predictor(BasePredictor):
             },
         })
         self.diarization_post = DiarizationPostProcessor()
-        self.audio_pre = AudioPreProcessor()
 
-    def run_diarization(self):
+    def predict(
+        self,
+        wavB64Str: str = Input(description="Base64 encoded WAV audio"),
+    ) -> Dict:
+
         closure = {'embeddings': None}
 
-        def hook(name, *args, **kwargs):
-            if name == "embeddings" and len(args) > 0:
-                closure['embeddings'] = args[0]
+        # write wav to temp file
+        with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+            with open(f.name, "wb") as wav_file:
+                wav_file.write(base64.b64decode(wavB64Str))
+                wav_file.flush()
 
-        print('diarizing audio file...')
-        diarization = self.diarization(self.audio_pre.output_path, hook=hook)
+            diarization = self.diarization(f.name)
         embeddings = {
             'data': closure['embeddings'],
             'chunk_duration': self.diarization.segmentation_duration,
             'chunk_offset': self.diarization.segmentation_step * self.diarization.segmentation_duration,
         }
         return self.diarization_post.process(diarization, embeddings)
-
-    def predict(
-        self,
-        audio: Path = Input(description="Audio file",
-                            default="https://pyannote-speaker-diarization.s3.eu-west-2.amazonaws.com/lex-levin-4min.mp3"),
-    ) -> Path:
-        """Run a single prediction on the model"""
-
-        self.audio_pre.process(audio)
-
-        if self.audio_pre.error:
-            print(self.audio_pre.error)
-            result = self.diarization_post.empty_result()
-        else:
-            result = self.run_diarization()
-
-        self.audio_pre.cleanup()
-
-        output = Path(tempfile.mkdtemp()) / "output.json"
-        with open(output, "w") as f:
-            f.write(json.dumps(result, indent=2))
-        return output
