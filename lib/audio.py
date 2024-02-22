@@ -3,8 +3,6 @@ import os
 import tempfile
 import requests
 
-import ffmpeg
-
 
 class AudioPreProcessor:
     def __init__(self):
