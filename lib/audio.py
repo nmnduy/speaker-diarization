@@ -12,6 +12,10 @@ class AudioPreProcessor:
         self.error = None
 
     def process(self, audio_file):
+
+        if audio_file.endswith('.wav'):
+            self.output_path = audio_file
+
         # converts audio file to 16kHz 16bit mono wav...
         print('pre-processing audio file...')
         stream = ffmpeg.input(audio_file, vn=None, hide_banner=None)
